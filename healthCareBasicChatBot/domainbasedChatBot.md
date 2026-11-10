@@ -14,4 +14,14 @@ In healthcare, the system prompt must strictly establish safety boundaries: it m
 Example 2: Cinema & Event Booking Assistant ("ShowBot" / BookMyShow-style)
 In entertainment booking, the system prompt forces the model to act as a structured booking agent that collects parameters sequentially: City/Location → Movie/Event → Date & Show Format → Seat Category/Count, preventing premature confirmations.
 
-Production Enhancements to Keep in MindSliding Window / Trimming: If a user talks for 50 turns, passing all past messages exceeds the model's context window and racks up token usage. In production, use trim_messages from langchain_core.messages to keep only the SystemMessage plus the last $N$ turns.Session Storage: Instead of an in-memory list (conversation_history = [...]), production systems store these messages in a database (e.g., Redis or PostgreSQL) keyed by session_id.
+## Production Enhancements to Keep in Mind
+
+### Sliding window and trimming
+
+If a user talks for many turns, passing the entire history can exceed the model's context window and increase token usage. Use `trim_messages` from `langchain_core.messages` to keep the SystemMessage plus an appropriate number of recent turns.
+
+### Session storage
+
+Instead of relying on an in-memory list (`conversation_history = [...]`), production systems can store messages in a database such as Redis or PostgreSQL, keyed by `session_id`.
+
+For a fuller treatment of persistence, thread IDs, storage layers, sliding windows, rolling summaries, and message trimming, see [prodchatBotTipsGuide.md](prodchatBotTipsGuide.md).

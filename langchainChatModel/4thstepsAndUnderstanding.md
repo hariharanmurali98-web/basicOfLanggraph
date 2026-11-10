@@ -196,3 +196,7 @@ Conversation History
 ↓
  
 Answer
+
+## Related learning path
+
+This agent → tool → agent cycle is part of the [production LangGraph roadmap](../langgraph_production_roadmap.md). The following memory stage is covered in [5thProgram.md](5thProgram.md) and the [production conversation-memory guide](../healthCareBasicChatBot/prodchatBotTipsGuide.md).

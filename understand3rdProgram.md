@@ -159,3 +159,7 @@ Back To ChatGroq
 ↓
  
 Final Answer
+
+## Related learning path
+
+This program covers the agent/router/tool-call stage of the [production LangGraph roadmap](langgraph_production_roadmap.md). The next progression is real tool calling, then checkpointed chat memory and per-thread conversation history; see [langchainChatModel/4thstepsAndUnderstanding.md](langchainChatModel/4thstepsAndUnderstanding.md) and [langchainChatModel/5thProgram.md](langchainChatModel/5thProgram.md).
