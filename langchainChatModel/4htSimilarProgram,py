@@ -1,0 +1,318 @@
+"""
+==========================================================
+PROGRAM 4
+REAL TOOL CALLING AGENT
+LANGGRAPH + CHATGROQ
+==========================================================
+
+Topics Covered
+
+1. @tool
+2. bind_tools()
+3. ToolNode
+4. tool_calls
+5. Agent Node
+6. Conditional Edges
+7. ReAct Agent Pattern
+
+==========================================================
+"""
+
+# ==========================================================
+# IMPORTS
+# ==========================================================
+
+from dotenv import load_dotenv
+
+from typing import Annotated
+from typing_extensions import TypedDict
+
+from langgraph.graph import (
+    StateGraph,
+    START,
+    END
+)
+
+from langgraph.graph.message import (
+    add_messages
+)
+
+from langgraph.prebuilt import (
+    ToolNode
+)
+
+from langchain_core.tools import (
+    tool
+)
+
+from langchain_core.messages import (
+    HumanMessage
+)
+
+from langchain_groq import (
+    ChatGroq
+)
+
+# ==========================================================
+# LOAD ENV VARIABLES
+# ==========================================================
+
+load_dotenv()
+
+# ==========================================================
+# TOOL
+# ==========================================================
+
+"""
+A Tool is just a Python function.
+
+The @tool decorator converts
+the function into an LLM-usable tool.
+
+The LLM can:
+
+1. Discover the tool
+2. Understand its purpose
+3. Call it automatically
+"""
+
+@tool
+def multiply(
+    a: int,
+    b: int
+) -> int:
+    """
+    Multiply two numbers.
+
+    Use this whenever a user
+    asks for multiplication.
+    """
+
+    return a * b
+
+
+# Collect available tools
+
+tools = [multiply]
+
+# ==========================================================
+# CREATE MODEL
+# ==========================================================
+
+llm = ChatGroq(
+    model="openai/gpt-oss-20b",
+    temperature=0
+)
+
+# ==========================================================
+# BIND TOOLS
+# ==========================================================
+
+"""
+Very Important!
+
+Without bind_tools():
+
+Model CAN NOT call tools.
+
+With bind_tools():
+
+Model understands:
+
+Available tools
+Tool descriptions
+Tool arguments
+"""
+
+llm_with_tools = llm.bind_tools(
+    tools
+)
+
+# ==========================================================
+# STATE
+# ==========================================================
+
+class AgentState(TypedDict):
+
+    messages: Annotated[
+        list,
+        add_messages
+    ]
+
+
+# ==========================================================
+# AGENT NODE
+# ==========================================================
+
+"""
+Agent Node
+
+Receives conversation.
+
+Sends messages to model.
+
+Model decides:
+
+1. Answer directly
+
+OR
+
+2. Call tool
+"""
+
+def agent(state: AgentState):
+
+    print("\nAgent Running...\n")
+
+    response = llm_with_tools.invoke(
+        state["messages"]
+    )
+
+    return {
+        "messages": [response]
+    }
+
+
+# ==========================================================
+# ROUTER
+# ==========================================================
+
+"""
+Checks whether model requested
+a tool call.
+
+If tool_calls exists:
+
+Go to ToolNode
+
+Otherwise:
+
+Finish execution
+"""
+
+def should_continue(
+        state: AgentState
+):
+
+    last_message = state[
+        "messages"
+    ][-1]
+
+    if last_message.tool_calls:
+
+        print(
+            "\nTool Call Detected"
+        )
+
+        return "tools"
+
+    print(
+        "\nNo Tool Needed"
+    )
+
+    return END
+
+
+# ==========================================================
+# TOOL NODE
+# ==========================================================
+
+"""
+ToolNode executes
+tool calls generated
+by the model.
+"""
+
+tool_node = ToolNode(
+    tools
+)
+
+# ==========================================================
+# GRAPH
+# ==========================================================
+
+builder = StateGraph(
+    AgentState
+)
+
+builder.add_node(
+    "agent",
+    agent
+)
+
+builder.add_node(
+    "tools",
+    tool_node
+)
+
+# ==========================================================
+# FLOW
+# ==========================================================
+
+builder.add_edge(
+    START,
+    "agent"
+)
+
+builder.add_conditional_edges(
+    "agent",
+    should_continue
+)
+
+"""
+After tool execution
+
+go back to agent
+
+Agent reads:
+
+User Message
+
+Tool Output
+
+Then creates
+the final answer.
+"""
+
+builder.add_edge(
+    "tools",
+    "agent"
+)
+
+# ==========================================================
+# COMPILE GRAPH
+# ==========================================================
+
+graph = builder.compile()
+
+# ==========================================================
+# INPUT
+# ==========================================================
+
+result = graph.invoke(
+
+    {
+        "messages": [
+
+            HumanMessage(
+                content=
+                "What is 500 multiplied by 300?"
+            )
+
+        ]
+    }
+
+)
+
+# ==========================================================
+# OUTPUT
+# ==========================================================
+
+print("\n")
+print("=" * 60)
+print("FINAL CONVERSATION")
+print("=" * 60)
+
+for msg in result["messages"]:
+
+    msg.pretty_print()

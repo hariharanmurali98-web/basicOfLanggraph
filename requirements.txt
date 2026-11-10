@@ -1,0 +1,17 @@
+langgraph
+langchain_groq
+langchain-community 
+duckduckgo-search #for exteranl web search api calling
+#langchain-community tavily-python (requires an api key for this)
+
+#it become legacy now error(DeprecationWarning: `langchain-community` is being sunset and is no longer actively maintained)
+# Step 2: The Modern Fix (Avoid langchain-community Deprecation Warnings)
+# The console also output a deprecation warning:
+
+# DeprecationWarning: langchain-community is being sunset...
+
+# Instead of relying on the legacy langchain_community.tools.DuckDuckGoSearchRun
+#  wrapper (which frequently breaks whenever upstream scrapers update),
+#   the standard production approach in LangGraph is to define your own clean
+#    @tool around ddgs:
+ -U ddgs# (external api search

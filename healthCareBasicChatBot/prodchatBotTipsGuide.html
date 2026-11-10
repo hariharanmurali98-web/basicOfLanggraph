@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Production Chat Memory Architecture - LangChain & LangGraph</title>
+
+<style>
+
+body{
+    font-family: Arial, sans-serif;
+    line-height:1.7;
+    max-width:1200px;
+    margin:auto;
+    padding:20px;
+    background:#f7f9fc;
+    color:#222;
+}
+
+h1,h2,h3{
+    color:#0d47a1;
+}
+
+.section{
+    background:white;
+    padding:20px;
+    border-radius:10px;
+    margin-bottom:20px;
+    box-shadow:0px 2px 8px rgba(0,0,0,0.1);
+}
+
+code{
+    background:#eef;
+    padding:2px 5px;
+    border-radius:4px;
+}
+
+pre{
+    background:#1e1e1e;
+    color:#ddd;
+    padding:15px;
+    overflow-x:auto;
+    border-radius:8px;
+}
+
+.note{
+    background:#fff3cd;
+    padding:15px;
+    border-left:5px solid orange;
+    margin-top:10px;
+}
+
+.important{
+    background:#d4edda;
+    padding:15px;
+    border-left:5px solid green;
+    margin-top:10px;
+}
+
+table{
+    border-collapse:collapse;
+    width:100%;
+}
+
+table, th, td{
+    border:1px solid #ccc;
+}
+
+th{
+    background:#0d47a1;
+    color:white;
+}
+
+th, td{
+    padding:10px;
+}
+
+</style>
+
+</head>
+<body>
+
+<h1>Production Conversation Memory Architecture</h1>
+
+<div class="section">
+
+<h2>Big Misconception Beginners Have</h2>
+
+<p>
+Many beginners store chat history in a Python list:
+</p>
+
+<pre>
+conversation_history = []
+</pre>
+
+<p>
+This works only for learning and small demos.
+</p>
+
+<p>
+In real production systems this approach is never used.
+</p>
+
+<div class="note">
+
+Reasons:
+
+<ul>
+<li>Data is lost when server restarts.</li>
+<li>Cannot scale across multiple servers.</li>
+<li>History becomes extremely large.</li>
+<li>Causes high token costs.</li>
+<li>Can exceed model context windows.</li>
+</ul>
+
+</div>
+
+</div>
+
+<div class="section">
+
+<h2>Real Production Architecture</h2>
+
+<pre>
+
+[ Frontend Client ]
+        │
+   (HTTP / WS)
+        ▼
+
+[ FastAPI App (Stateless) ]
+        │
+        │ Load History
+        ▼
+
+[ Postgres / Redis ]
+
+        │
+        │ Retrieve Messages
+        ▼
+
+[ Context Trimming ]
+        │
+        ▼
+
+[ Groq / OpenAI / Claude ]
+        │
+        ▼
+
+[ AI Response ]
+
+        │
+        ▼
+
+[ Save New Messages ]
+        │
+        ▼
+
+[ Postgres / Redis ]
+
+</pre>
+
+<div class="important">
+
+Backend APIs are usually stateless.
+
+Conversation state lives in a database or distributed cache.
+
+</div>
+
+</div>
+
+<div class="section">
+
+<h2>How Chat History is Stored</h2>
+
+<p>
+Every conversation receives a unique identifier.
+</p>
+
+Examples:
+<ul>
+<li>thread_123</li>
+<li>session_456</li>
+<li>user_999_chat_11</li>
+</ul>
+
+<h3>Example</h3>
+
+<pre>
+session_id = "user_102_chat_456"
+</pre>
+
+<p>
+Whenever the user sends a question:
+</p>
+
+<ol>
+
+<li>Fetch recent messages using session_id.</li>
+
+<li>Convert data into message objects.</li>
+
+<li>Send messages to LLM.</li>
+
+<li>Receive response.</li>
+
+<li>Persist both user and AI messages.</li>
+
+</ol>
+
+</div>
+
+<div class="section">
+
+<h2>Why LangGraph is Popular</h2>
+
+<p>
+LangGraph provides built-in conversation persistence.
+</p>
+
+<p>
+Instead of manually loading and saving messages,
+LangGraph can automatically restore state by thread ID.
+</p>
+
+<pre>
+config = {
+    "configurable": {
+        "thread_id": "session-user-9823"
+    }
+}
+</pre>
+
+<pre>
+response = await graph.ainvoke(
+    {
+        "messages":[
+            HumanMessage(content=user_query)
+        ]
+    },
+    config=config
+)
+</pre>
+
+<h3>What Happens Internally</h3>
+
+<ul>
+
+<li>Graph loads previous conversation.</li>
+
+<li>Graph reconstructs state.</li>
+
+<li>New message gets appended.</li>
+
+<li>Model is invoked.</li>
+
+<li>Checkpoint gets updated.</li>
+
+</ul>
+
+</div>
+
+<div class="section">
+
+<h2>Conversation Storage Layers</h2>
+
+<table>
+
+<tr>
+<th>Storage</th>
+<th>Purpose</th>
+<th>Examples</th>
+</tr>
+
+<tr>
+<td>Permanent Storage</td>
+<td>Historical conversation archive</td>
+<td>PostgreSQL, MongoDB, DynamoDB</td>
+</tr>
+
+<tr>
+<td>Fast Cache</td>
+<td>Current active sessions</td>
+<td>Redis</td>
+</tr>
+
+<tr>
+<td>Long-Term Analytics</td>
+<td>Reporting, compliance</td>
+<td>Data Warehouse</td>
+</tr>
+
+</table>
+
+</div>
+
+<div class="section">
+
+<h2>Problem: Context Overflow</h2>
+
+<p>
+Most beginners assume every message should be sent
+to the model every time.
+</p>
+
+<p>
+Production systems never do that.
+</p>
+
+<div class="note">
+
+Large histories cause:
+
+<ul>
+
+<li>Higher costs</li>
+
+<li>Higher latency</li>
+
+<li>Context window overflow</li>
+
+<li>Poor performance</li>
+
+</ul>
+
+</div>
+
+</div>
+
+<div class="section">
+
+<h2>Strategy 1: Sliding Window Memory</h2>
+
+<p>
+Keep only the most recent messages.
+</p>
+
+Example:
+
+<pre>
+
+System Message
+
+User Question 8
+AI Response 8
+
+User Question 9
+AI Response 9
+
+User Question 10
+AI Response 10
+
+</pre>
+
+<p>
+Messages 1-7 are excluded from model input.
+</p>
+
+<p>
+Best for:
+</p>
+
+<ul>
+
+<li>Customer Support</li>
+
+<li>Helpdesk Agents</li>
+
+<li>Ticket Systems</li>
+
+<li>FAQ Bots</li>
+
+</ul>
+
+</div>
+
+<div class="section">
+
+<h2>Strategy 2: Rolling Summarization</h2>
+
+<p>
+Older conversations are compressed into a summary.
+</p>
+
+<pre>
+
+Summary:
+User previously discussed a home loan,
+submitted salary proof,
+and requested EMI calculations.
+
+Recent Messages:
+21
+22
+23
+24
+25
+
+</pre>
+
+<p>
+Effective for:
+</p>
+
+<ul>
+
+<li>Healthcare Agents</li>
+<li>Financial Advisors</li>
+<li>Legal Assistants</li>
+<li>Long Running Conversations</li>
+</ul>
+
+</div>
+
+<div class="section">
+
+<h2>LangChain Message Trimming</h2>
+
+<pre>
+from langchain_core.messages import trim_messages
+</pre>
+
+<pre>
+trimmer = trim_messages(
+    max_tokens=2000,
+    strategy="last",
+    token_counter=llm,
+    include_system=True,
+    allow_partial=False,
+    start_on="human"
+)
+</pre>
+
+<h3>Key Parameters</h3>
+
+<ul>
+
+<li><b>max_tokens</b> → Maximum context size</li>
+
+<li><b>strategy="last"</b> → Keep most recent messages</li>
+
+<li><b>include_system</b> → Preserve important instructions</li>
+
+<li><b>start_on="human"</b> → Ensure valid conversation order</li>
+
+</ul>
+
+</div>
+
+<div class="section">
+
+<h2>Database Schema</h2>
+
+<pre>
+
+CREATE TABLE chat_messages(
+
+    id UUID PRIMARY KEY,
+
+    session_id VARCHAR(64),
+
+    sender_type VARCHAR(20),
+
+    content TEXT,
+
+    tokens_used INT,
+
+    created_at TIMESTAMP
+);
+
+</pre>
+
+<p>
+Example sender types:
+</p>
+
+<ul>
+
+<li>system</li>
+<li>human</li>
+<li>ai</li>
+
+</ul>
+
+</div>
+
+<div class="section">
+
+<h2>How Data Flows Through the System</h2>
+
+<pre>
+
+User Message
+      │
+      ▼
+
+Load Previous Messages
+      │
+      ▼
+
+Convert To
+HumanMessage / AIMessage
+      │
+      ▼
+
+Add Current User Message
+      │
+      ▼
+
+Trim Messages
+      │
+      ▼
+
+Send To LLM
+      │
+      ▼
+
+Receive AIMessage
+      │
+      ▼
+
+Persist New Messages
+      │
+      ▼
+
+Return Response
+
+</pre>
+
+</div>
+
+<div class="section">
+
+<h2>Production Service Layer</h2>
+
+<pre>
+
+1. User sends request
+
+2. API receives request
+
+3. Load chat history
+
+4. Create LangChain messages
+
+5. Trim context
+
+6. Invoke LLM
+
+7. Save messages
+
+8. Return response
+
+</pre>
+
+</div>
+
+<div class="section">
+
+<h2>LangGraph Interview Notes</h2>
+
+<h3>What beginners do</h3>
+
+<pre>
+messages = []
+</pre>
+
+<h3>What production systems do</h3>
+
+<pre>
+thread_id
+Database
+Checkpointing
+Memory Management
+Message Trimming
+</pre>
+
+<h3>Important Concepts</h3>
+
+<ul>
+
+<li>HumanMessage</li>
+
+<li>AIMessage</li>
+
+<li>SystemMessage</li>
+
+<li>State</li>
+
+<li>Checkpointer</li>
+
+<li>Thread ID</li>
+
+<li>Persistence</li>
+
+<li>Redis</li>
+
+<li>PostgreSQL</li>
+
+<li>Context Window Management</li>
+
+</ul>
+
+</div>
+
+<div class="section">
+
+<h2>Final Revision Summary</h2>
+
+<div class="important">
+
+✅ Do not store production chat history in Python lists
+
+<br><br>
+
+✅ Store messages using thread_id or session_id
+
+<br><br>
+
+✅ Use Redis for active memory
+
+<br><br>
+
+✅ Use PostgreSQL for durable storage
+
+<br><br>
+
+✅ Use LangGraph Checkpointers for persistence
+
+<br><br>
+
+✅ Trim messages before every LLM call
+
+<br><br>
+
+✅ Keep SystemMessage permanently
+
+<br><br>
+
+✅ Use summaries for very long conversations
+
+<br><br>
+
+✅ Convert DB rows back into HumanMessage, AIMessage and SystemMessage objects before invoking the model
+
+</div>
+
+</div>
+
+</body>
+</html>
